@@ -88,17 +88,23 @@
     <div id="map"></div>
 
     <script>
+
+
         // ==========================================
         // 1. CONFIGURATION
         // ==========================================
-        const _ID = "19x1T9hf0GsTaT5DFKAk7-51A7s6PCd_Ty6P5X9n3A9M"; // ไอดี Sheet ของคุณ
         
-        // *** สำคัญ: ชื่อ Tab (Sheet Name) ต้องตรงกับในไฟล์จริง ***
-        // ลองเปลี่ยนเป็น "Sheet1" หากไม่พบข้อมูล
+        // แก้ไข 1: ใส่เฉพาะ ID (ตัวอักษรยาวๆ ระหว่าง /d/ กับ /edit) 
+        // ห้ามใส่ https://... ทั้งหมด
+        const SHEET_ID = "19x1T9hf0GsTaT5DFKAk7-51A7s6PCd_Ty6P5X9n3A9M"; 
+        
+        // แก้ไข 2: ใส่ชื่อ Tab ด้านล่างให้ตรงเป๊ะๆ (ตัวเล็กตัวใหญ่มีผล)
+        // ตามที่คุณแจ้งมาคือ "dataset"
         const SHEET_NAME = "dataset"; 
 
-        const FUEL_PRICE = 30; // บาท/ลิตร
-        const FUEL_CONSUMPTION = 4; // กม./ลิตร
+        const FUEL_PRICE = 30; 
+        const FUEL_CONSUMPTION = 4;
+
 
         // ==========================================
         // 2. DATA FETCHING (GViz Method)
