@@ -3,332 +3,388 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Route Optimization Dashboard (GViz)</title>
+    <title>Route Optimization Dashboard (Comparison)</title>
     
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;700&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
 
     <style>
-        body { font-family: 'Sarabun', sans-serif; margin: 0; padding: 20px; background: #f3f4f6; color: #1f2937; }
+        body { font-family: 'Sarabun', sans-serif; background-color: #f3f4f6; }
         
-        /* Header */
-        .header { text-align: center; margin-bottom: 25px; }
-        .header h1 { margin: 0; font-size: 1.5rem; color: #111827; }
-        .header p { color: #6b7280; font-size: 0.9rem; margin-top: 5px; }
+        /* Custom Scrollbar for Table */
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #f1f1f1; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
 
-        /* Stats Grid */
-        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 15px; margin-bottom: 20px; }
-        .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); border: 1px solid #e5e7eb; }
-        .card h3 { margin: 0 0 8px; font-size: 0.85rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em; }
-        .card .value { font-size: 1.8rem; font-weight: 700; color: #111827; }
-        .card .sub { font-size: 0.85rem; color: #9ca3af; margin-top: 4px; }
-        .text-green { color: #059669 !important; }
-        .text-red { color: #dc2626 !important; }
-
-        /* Map */
-        #map { height: 600px; width: 100%; border-radius: 16px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06); border: 4px solid white; }
-        
-        /* Loading & Error */
-        #loading { position: fixed; inset: 0; background: rgba(255,255,255,0.95); display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 9999; }
-        .spinner { border: 4px solid #f3f3f3; border-top: 4px solid #111827; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin-bottom: 15px; }
+        /* Loading Spinner */
+        .spinner { border: 4px solid #f3f3f3; border-top: 4px solid #111827; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        #error-msg { background: #fee2e2; color: #991b1b; padding: 15px; border-radius: 8px; max-width: 400px; text-align: center; display: none; border: 1px solid #fecaca; }
 
-        /* Legend */
-        .legend { background: white; padding: 10px 12px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); font-size: 0.85rem; line-height: 1.5; max-height: 250px; overflow-y: auto; }
-        .legend i { width: 12px; height: 12px; float: left; margin-right: 8px; margin-top: 3px; border-radius: 2px; }
-        
-        /* Tooltip Custom */
-        .leaflet-tooltip.my-tooltip { background: #1f2937; color: white; border: none; border-radius: 6px; padding: 4px 8px; font-size: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
-        .leaflet-tooltip-left.my-tooltip::before { border-left-color: #1f2937; }
-        .leaflet-tooltip-right.my-tooltip::before { border-right-color: #1f2937; }
-
-        .btn-retry { margin-top: 15px; padding: 8px 16px; background: #111827; color: white; border: none; border-radius: 6px; cursor: pointer; }
+        /* Map Toggle Control */
+        .map-control {
+            background: white; padding: 10px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            font-family: 'Sarabun', sans-serif;
+        }
     </style>
 </head>
 <body>
 
-    <div id="loading">
-        <div class="spinner"></div>
-        <h2 style="font-size:1.1rem; font-weight:600; color:#374151;">กำลังคำนวณเส้นทาง...</h2>
-        <p style="font-size:0.9rem; color:#6b7280; margin-top:5px;">ดึงข้อมูลจาก Google  ด้วยวิธี GViz</p>
-        <div id="error-msg"></div>
-        <button id="btnRetry" class="btn-retry" style="display:none;" onclick="location.reload()">ลองใหม่</button>
+    <div id="loading" class="fixed inset-0 bg-white/95 z-[9999] flex flex-col justify-center items-center">
+        <div class="spinner mb-4"></div>
+        <h2 class="text-xl font-bold text-gray-800">กำลังประมวลผลข้อมูล...</h2>
+        <p class="text-gray-500 text-sm mt-2">ดึงข้อมูลจาก Google Sheet และคำนวณพื้นที่บริการ</p>
+        <div id="error-msg" class="hidden mt-4 p-4 bg-red-100 text-red-700 rounded-lg border border-red-200 max-w-md text-center"></div>
+        <button id="btnRetry" class="hidden mt-4 px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800" onclick="location.reload()">ลองใหม่</button>
     </div>
 
-    <div class="header">
-        <h1>Dashboard เปรียบเทียบเส้นทาง (Before vs After)</h1>
-        <p>วิเคราะห์ผลลัพธ์จาก K-Means Clustering</p>
-    </div>
+    <div class="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8">
+        
+        <div class="text-center mb-8">
+            <h1 class="text-2xl sm:text-3xl font-bold text-gray-900">Dashboard เปรียบเทียบเส้นทางเดินรถ</h1>
+            <p class="text-gray-500 mt-2">Before (Current) vs After (K-Means Optimization)</p>
+        </div>
 
-    <div class="stats-grid">
-        <div class="card">
-            <h3>ระยะทางรวม (Total Distance)</h3>
-            <div class="value" id="dist-after">-</div>
-            <div class="sub">เดิม: <span id="dist-before">-</span> km</div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            <div class="bg-white p-5 rounded-xl shadow-sm border border-gray-100">
+                <h3 class="text-xs font-bold text-gray-500 uppercase tracking-wider">ระยะทางรวม (Total Dist.)</h3>
+                <div class="mt-1 flex items-baseline gap-2">
+                    <span class="text-2xl font-bold text-gray-900" id="dist-after">-</span>
+                </div>
+                <div class="text-xs text-gray-400 mt-1">เดิม: <span id="dist-before">-</span> km</div>
+            </div>
+
+            <div class="bg-white p-5 rounded-xl shadow-sm border border-gray-100">
+                <h3 class="text-xs font-bold text-gray-500 uppercase tracking-wider">ต้นทุนเชื้อเพลิง (Est. Cost)</h3>
+                <div class="mt-1 flex items-baseline gap-2">
+                    <span class="text-2xl font-bold text-gray-900" id="cost-after">-</span>
+                </div>
+                <div class="text-xs text-gray-400 mt-1">เดิม: <span id="cost-before">-</span> บาท</div>
+            </div>
+
+            <div class="bg-white p-5 rounded-xl shadow-sm border border-gray-100">
+                <h3 class="text-xs font-bold text-green-600 uppercase tracking-wider">ส่วนต่างที่ลดได้ (Savings)</h3>
+                <div class="mt-1 flex items-baseline gap-2">
+                    <span class="text-2xl font-bold text-green-600" id="savings">-</span>
+                    <span class="text-sm font-medium text-green-500" id="savings-pct"></span>
+                </div>
+                <div class="text-xs text-green-500 mt-1">ต่อรอบการวิ่ง (Per Round)</div>
+            </div>
+
+            <div class="bg-white p-5 rounded-xl shadow-sm border border-gray-100">
+                <h3 class="text-xs font-bold text-gray-500 uppercase tracking-wider">ลูกค้าที่เปลี่ยนโซน</h3>
+                <div class="mt-1 flex items-baseline gap-2">
+                    <span class="text-2xl font-bold text-orange-500" id="changed-count">-</span>
+                    <span class="text-sm text-gray-500">ราย</span>
+                </div>
+                <div class="text-xs text-gray-400 mt-1">จากทั้งหมด <span id="total-count">-</span> ราย</div>
+            </div>
         </div>
-        <div class="card">
-            <h3>ต้นทุนเชื้อเพลิง (Fuel Cost)</h3>
-            <div class="value" id="cost-after">-</div>
-            <div class="sub">เดิม: <span id="cost-before">-</span> THB</div>
+
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden mb-8 relative">
+            <div class="p-4 border-b border-gray-100 bg-gray-50 flex flex-wrap justify-between items-center gap-4">
+                <h3 class="font-bold text-gray-800">📍 แผนที่แสดงโซนบริการ (Service Zones)</h3>
+                
+                <div class="flex bg-gray-200 rounded-lg p-1">
+                    <button id="btnViewOld" class="px-4 py-1.5 rounded-md text-sm font-medium transition-all text-gray-600 hover:text-gray-900" onclick="switchView('old')">Current (เดิม)</button>
+                    <button id="btnViewNew" class="px-4 py-1.5 rounded-md text-sm font-medium transition-all bg-white text-gray-900 shadow-sm" onclick="switchView('new')">K-Means (ใหม่)</button>
+                </div>
+            </div>
+            
+            <div id="map" class="h-[600px] w-full z-0"></div>
         </div>
-        <div class="card">
-            <h3>ส่วนต่างที่ลดได้ (Savings)</h3>
-            <div class="value text-green" id="savings">-</div>
-            <div class="sub text-green" id="savings-pct">-</div>
-        </div>
-        <div class="card">
-            <h3>ลูกค้าที่ได้รับผลกระทบ</h3>
-            <div class="value" id="changed-count">-</div>
-            <div class="sub">จากทั้งหมด <span id="total-count">-</span> ราย</div>
+
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+            <div class="p-5 border-b border-gray-100">
+                <h3 class="font-bold text-gray-800">📋 รายละเอียดลูกค้าและยอดขาย (Customer Details)</h3>
+                <p class="text-xs text-gray-500 mt-1">เปรียบเทียบการจัดรถและปริมาณการขาย</p>
+            </div>
+            <div class="overflow-x-auto custom-scrollbar">
+                <table class="w-full text-sm text-left">
+                    <thead class="bg-gray-50 text-gray-500 font-medium border-b">
+                        <tr>
+                            <th class="px-6 py-3 whitespace-nowrap">ชื่อลูกค้า</th>
+                            <th class="px-6 py-3 whitespace-nowrap text-right">ยอดขาย/สัปดาห์ (ลิตร)</th>
+                            <th class="px-6 py-3 whitespace-nowrap">รถคันเดิม (Current)</th>
+                            <th class="px-6 py-3 whitespace-nowrap">รถคันใหม่ (K-Means)</th>
+                            <th class="px-6 py-3 whitespace-nowrap text-center">สถานะ</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableBody" class="divide-y divide-gray-100">
+                        </tbody>
+                </table>
+            </div>
+            <div class="p-4 border-t border-gray-100 bg-gray-50 text-center">
+                <p class="text-xs text-gray-400">แสดงผลสูงสุด 500 รายการ</p>
+            </div>
         </div>
     </div>
-
-    <div id="map"></div>
 
     <script>
-
-
         // ==========================================
-        // 1. CONFIGURATION
+        // CONFIGURATION
         // ==========================================
-        
-        // แก้ไข 1: ใส่เฉพาะ ID (ตัวอักษรยาวๆ ระหว่าง /d/ กับ /edit) 
-        // ห้ามใส่ https://... ทั้งหมด
-        const SHEET_ID = "19x1T9hf0GsTaT5DFKAk7-51A7s6PCd_Ty6P5X9n3A9M"; 
-        
-        // แก้ไข 2: ใส่ชื่อ Tab ด้านล่างให้ตรงเป๊ะๆ (ตัวเล็กตัวใหญ่มีผล)
-        // ตามที่คุณแจ้งมาคือ "dataset"
-        const SHEET_NAME = "dataset"; 
+        const SHEET_ID = "19x1T9hf0GsTaT5DFKAk7-51A7s6PCd_Ty6P5X9n3A9M"; // Dataset ID
+        const SHEET_NAME = "dataset"; // Tab Name
 
         const FUEL_PRICE = 30; 
         const FUEL_CONSUMPTION = 4;
 
+        // Global State
+        let globalData = [];
+        let globalDepot = { lat: 0, lng: 0 };
+        let map;
+        let layerGroup; // For Markers & Polygons
+        let currentViewMode = 'new'; // 'old' or 'new'
 
         // ==========================================
-        // 2. DATA FETCHING (GViz Method)
+        // UTILS: Convex Hull (Monotone Chain Algorithm)
         // ==========================================
-        async function fetchSheet(sheetName, sheetId = SHEET_ID) {
-            const url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(sheetName)}&tq=`;
-            
-            try {
-                const res = await fetch(url, { cache: "no-store" });
-                if (!res.ok) throw new Error(`HTTP Error: ${res.status}`);
-                
-                const text = await res.text();
-                // ตัดแต่ง JSON Response จาก GViz
-                const json = JSON.parse(text.substring(text.indexOf('{'), text.lastIndexOf('}') + 1));
-                
-                if (json.status === 'error') throw new Error(`Google Sheet Error: ${json.errors[0].message}`);
-
-                const cols = json.table.cols.map(c => c ? (c.label || c.id) : "");
-                const rows = json.table.rows.map(r => (r.c || []).map(c => c ? (c.f ?? c.v ?? "") : ""));
-                
-                // Map Array เป็น Object ตามชื่อคอลัมน์
-                return rows.map(r => {
-                    const obj = {};
-                    cols.forEach((colName, i) => {
-                        if(colName) obj[colName] = r[i];
-                    });
-                    return obj;
-                });
-
-            } catch (err) {
-                console.error("Fetch Error:", err);
-                throw err;
+        function convexHull(points) {
+            points.sort((a, b) => a.lat != b.lat ? a.lat - b.lat : a.lng - b.lng);
+            const cross = (a, b, o) => (a.lat - o.lat) * (b.lng - o.lng) - (a.lng - o.lng) * (b.lat - o.lat);
+            const upper = [], lower = [];
+            for (const p of points) {
+                while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) upper.pop();
+                upper.push(p);
             }
+            for (const p of points.reverse()) {
+                while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) lower.pop();
+                lower.push(p);
+            }
+            return [...upper, ...lower]; // Returns array of {lat, lng}
         }
 
         // ==========================================
-        // 3. CALCULATION LOGIC (TSP Heuristic)
+        // DATA FETCHING & LOGIC
         // ==========================================
+        async function fetchSheet(sheetName, sheetId = SHEET_ID) {
+            const url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(sheetName)}&tq=`;
+            const res = await fetch(url);
+            const text = await res.text();
+            const json = JSON.parse(text.substring(text.indexOf('{'), text.lastIndexOf('}') + 1));
+            const cols = json.table.cols.map(c => c ? (c.label || c.id) : "");
+            return json.table.rows.map(r => {
+                const obj = {};
+                cols.forEach((colName, i) => { if(colName) obj[colName] = (r.c && r.c[i]) ? (r.c[i].v) : null; });
+                return obj;
+            });
+        }
+
         function getDistance(lat1, lon1, lat2, lon2) {
             const R = 6371; 
             const dLat = (lat2 - lat1) * Math.PI / 180;
             const dLon = (lon2 - lon1) * Math.PI / 180;
-            const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-                      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon/2) * Math.sin(dLon/2); 
+            const a = Math.sin(dLat/2) * Math.sin(dLat/2) + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon/2) * Math.sin(dLon/2); 
             return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
         }
 
-        function calculateRoute(points, depot) {
+        function calculateRouteCost(points, depot) {
             if (points.length === 0) return 0;
             let unvisited = [...points];
             let current = depot;
             let totalDist = 0;
-
-            // Nearest Neighbor Algorithm
             while (unvisited.length > 0) {
-                let nearestIdx = -1;
-                let minDst = Infinity;
-
+                let nearestIdx = -1, minDst = Infinity;
                 for (let i = 0; i < unvisited.length; i++) {
                     const d = getDistance(current.lat, current.lng, unvisited[i].lat, unvisited[i].lng);
-                    if (d < minDst) {
-                        minDst = d;
-                        nearestIdx = i;
-                    }
+                    if (d < minDst) { minDst = d; nearestIdx = i; }
                 }
-                
                 totalDist += minDst;
                 current = unvisited[nearestIdx];
                 unvisited.splice(nearestIdx, 1);
             }
-            // Return to depot
             totalDist += getDistance(current.lat, current.lng, depot.lat, depot.lng);
             return totalDist;
         }
 
         // ==========================================
-        // 4. MAIN APP
+        // MAIN APP
         // ==========================================
         async function initDashboard() {
             try {
                 const rawData = await fetchSheet(SHEET_NAME);
-                
-                if (rawData.length === 0) throw new Error("ไม่พบข้อมูลใน Sheet (อาจจะชื่อ Tab ผิด)");
+                if (rawData.length === 0) throw new Error("ไม่พบข้อมูล");
 
-                // ตรวจสอบคอลัมน์ที่จำเป็น
-                const sample = rawData[0];
-                const required = ['latitude', 'longitude', 'current_truck_id', 'assigned_truck_K-Means'];
-                const missing = required.filter(f => sample[f] === undefined);
-                
-                if (missing.length > 0) {
-                    throw new Error(`ไม่พบคอลัมน์: ${missing.join(', ')} <br>กรุณาตรวจสอบชื่อหัวตารางใน Google Sheet`);
-                }
-
-                // Clean Data
-                const data = rawData.filter(d => d.latitude && d.longitude).map(d => ({
+                // Process Data
+                globalData = rawData.filter(d => d.latitude && d.longitude).map(d => ({
                     lat: parseFloat(d.latitude),
                     lng: parseFloat(d.longitude),
                     name: d.customer_name || 'ลูกค้า',
-                    oldTruck: String(d.current_truck_id).trim(),
-                    newTruck: String(d['assigned_truck_K-Means']).trim()
+                    oldTruck: String(d.current_truck_id || 'Unknown').trim(),
+                    newTruck: String(d['assigned_truck_K-Means'] || 'Unknown').trim(),
+                    sale: parseFloat(d.sale_per_wk) || 0
                 }));
 
-                // Calculate Depot (Centroid)
-                const depot = {
-                    lat: data.reduce((s, d) => s + d.lat, 0) / data.length,
-                    lng: data.reduce((s, d) => s + d.lng, 0) / data.length
+                // Calculate Depot
+                globalDepot = {
+                    lat: globalData.reduce((s, d) => s + d.lat, 0) / globalData.length,
+                    lng: globalData.reduce((s, d) => s + d.lng, 0) / globalData.length
                 };
 
-                // Group Data
-                const groupsOld = {}, groupsNew = {};
-                let changedCount = 0;
-
-                data.forEach(d => {
-                    if (!groupsOld[d.oldTruck]) groupsOld[d.oldTruck] = [];
-                    groupsOld[d.oldTruck].push(d);
-
-                    if (!groupsNew[d.newTruck]) groupsNew[d.newTruck] = [];
-                    groupsNew[d.newTruck].push(d);
-
-                    if (d.oldTruck !== d.newTruck) changedCount++;
-                });
-
-                // Calculate Stats
-                let distOld = 0;
-                Object.values(groupsOld).forEach(g => distOld += calculateRoute(g, depot));
+                // Initialize Map
+                map = L.map('map').setView([globalDepot.lat, globalDepot.lng], 9);
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+                layerGroup = L.layerGroup().addTo(map);
                 
-                let distNew = 0;
-                Object.values(groupsNew).forEach(g => distNew += calculateRoute(g, depot));
+                // Depot Marker
+                L.marker([globalDepot.lat, globalDepot.lng], {
+                    icon: L.divIcon({ className: '', html: '<div style="background:black;width:14px;height:14px;border:2px solid white;border-radius:50%;box-shadow:0 0 5px black;"></div>' })
+                }).addTo(map).bindPopup("<b>Depot</b>");
 
-                const costOld = (distOld / FUEL_CONSUMPTION) * FUEL_PRICE;
-                const costNew = (distNew / FUEL_CONSUMPTION) * FUEL_PRICE;
-                const savings = costOld - costNew;
-
-                // Update UI
-                document.getElementById('dist-before').innerText = distOld.toLocaleString('th-TH', {maximumFractionDigits: 0});
-                document.getElementById('dist-after').innerText = distNew.toLocaleString('th-TH', {maximumFractionDigits: 0}) + " km";
-                
-                document.getElementById('cost-before').innerText = costOld.toLocaleString('th-TH', {maximumFractionDigits: 0});
-                document.getElementById('cost-after').innerText = costNew.toLocaleString('th-TH', {maximumFractionDigits: 0}) + " ฿";
-                
-                const savingsEl = document.getElementById('savings');
-                savingsEl.innerText = savings.toLocaleString('th-TH', {maximumFractionDigits: 0}) + " ฿";
-                if(savings < 0) { savingsEl.classList.remove('text-green'); savingsEl.classList.add('text-red'); }
-
-                document.getElementById('savings-pct').innerText = `(${((savings/costOld)*100).toFixed(1)}%)`;
-                
-                document.getElementById('total-count').innerText = data.length;
-                document.getElementById('changed-count').innerText = changedCount;
-
-                // Render Map
-                renderMap(data, depot, groupsNew);
+                calculateStats();
+                renderMap(); // Default View
+                renderTable();
 
                 document.getElementById('loading').style.display = 'none';
 
             } catch (err) {
-                const errBox = document.getElementById('error-msg');
-                errBox.style.display = 'block';
-                errBox.innerHTML = `<strong>เกิดข้อผิดพลาด:</strong><br>${err.message}`;
-                document.querySelector('.spinner').style.display = 'none';
-                document.getElementById('btnRetry').style.display = 'block';
+                document.getElementById('error-msg').innerText = err.message;
+                document.getElementById('error-msg').classList.remove('hidden');
+                document.getElementById('btnRetry').classList.remove('hidden');
             }
         }
 
-        function renderMap(data, depot, groups) {
-            const map = L.map('map').setView([depot.lat, depot.lng], 9);
-            
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                attribution: '&copy; OpenStreetMap contributors'
-            }).addTo(map);
+        function calculateStats() {
+            // Grouping
+            const groupsOld = {}, groupsNew = {};
+            let changedCount = 0;
 
-            // Depot Marker
-            const depotIcon = L.divIcon({
-                className: 'custom-div-icon',
-                html: "<div style='background-color:black;width:12px;height:12px;border-radius:50%;border:2px solid white;'></div>",
-                iconSize: [12, 12],
-                iconAnchor: [6, 6]
-            });
-            L.marker([depot.lat, depot.lng], {icon: depotIcon}).addTo(map).bindPopup("<b>Depot</b> (จุดกระจายสินค้าสมมติ)");
+            globalData.forEach(d => {
+                if (!groupsOld[d.oldTruck]) groupsOld[d.oldTruck] = [];
+                groupsOld[d.oldTruck].push(d);
 
-            // Truck Colors
-            const colors = ['#e6194b', '#3cb44b', '#ffe119', '#4363d8', '#f58231', '#911eb4', '#46f0f0', '#f032e6', '#bcf60c', '#fabebe', '#008080', '#e6beff', '#9a6324', '#fffac8', '#800000', '#aaffc3', '#808000', '#ffd8b1', '#000075', '#808080'];
-            const truckColors = {};
-            Object.keys(groups).forEach((id, i) => truckColors[id] = colors[i % colors.length]);
+                if (!groupsNew[d.newTruck]) groupsNew[d.newTruck] = [];
+                groupsNew[d.newTruck].push(d);
 
-            // Draw Points
-            data.forEach(p => {
-                const color = truckColors[p.newTruck] || '#999';
-                const isChanged = p.oldTruck !== p.newTruck;
-                
-                L.circleMarker([p.lat, p.lng], {
-                    radius: 6,
-                    fillColor: color,
-                    color: '#fff',
-                    weight: 1,
-                    opacity: 1,
-                    fillOpacity: 0.8
-                })
-                .bindTooltip(p.newTruck, { className: 'my-tooltip', direction: 'top', offset: [0,-5] })
-                .bindPopup(`
-                    <div style="font-family:'Sarabun'">
-                        <b>${p.name}</b><br>
-                        <hr style="margin:5px 0; border:0; border-top:1px solid #eee;">
-                        <span style="color:#6b7280; font-size:0.8rem;">รถคันใหม่ (K-Means):</span> <b style="color:${color}">${p.newTruck}</b><br>
-                        <span style="color:#6b7280; font-size:0.8rem;">รถคันเดิม:</span> <b>${p.oldTruck}</b>
-                        ${isChanged ? '<br><span style="color:#dc2626; font-size:0.75rem; font-weight:bold;">(มีการย้ายโซน)</span>' : ''}
-                    </div>
-                `)
-                .addTo(map);
+                if (d.oldTruck !== d.newTruck) changedCount++;
             });
 
-            // Legend
-            const legend = L.control({position: 'bottomright'});
-            legend.onAdd = function() {
-                const div = L.DomUtil.create('div', 'legend');
-                div.innerHTML = '<strong style="display:block; margin-bottom:5px;">โซนรถ (ใหม่)</strong>';
-                Object.keys(truckColors).sort().forEach(id => {
-                    div.innerHTML += `<div><i style="background:${truckColors[id]}"></i> ${id}</div>`;
-                });
-                return div;
-            };
-            legend.addTo(map);
+            // Calculate Costs
+            let distOld = 0;
+            Object.values(groupsOld).forEach(g => distOld += calculateRouteCost(g, globalDepot));
+            let distNew = 0;
+            Object.values(groupsNew).forEach(g => distNew += calculateRouteCost(g, globalDepot));
+
+            const costOld = (distOld / FUEL_CONSUMPTION) * FUEL_PRICE;
+            const costNew = (distNew / FUEL_CONSUMPTION) * FUEL_PRICE;
+            const savings = costOld - costNew;
+
+            // UI Update
+            document.getElementById('dist-before').innerText = distOld.toLocaleString('th-TH', {maximumFractionDigits: 0});
+            document.getElementById('dist-after').innerText = distNew.toLocaleString('th-TH', {maximumFractionDigits: 0}) + " km";
+            document.getElementById('cost-before').innerText = costOld.toLocaleString('th-TH', {maximumFractionDigits: 0});
+            document.getElementById('cost-after').innerText = costNew.toLocaleString('th-TH', {maximumFractionDigits: 0}) + " บาท";
+            document.getElementById('savings').innerText = savings.toLocaleString('th-TH', {maximumFractionDigits: 0}) + " บาท";
+            document.getElementById('savings-pct').innerText = `(${((savings/costOld)*100).toFixed(1)}%)`;
+            document.getElementById('changed-count').innerText = changedCount;
+            document.getElementById('total-count').innerText = globalData.length;
         }
 
-        // Start
+        function switchView(mode) {
+            currentViewMode = mode;
+            
+            // Toggle Button Styles
+            const btnOld = document.getElementById('btnViewOld');
+            const btnNew = document.getElementById('btnViewNew');
+            const activeClass = ['bg-white', 'text-gray-900', 'shadow-sm'];
+            const inactiveClass = ['bg-transparent', 'text-gray-600'];
+
+            if (mode === 'old') {
+                btnOld.classList.add(...activeClass); btnOld.classList.remove(...inactiveClass);
+                btnNew.classList.remove(...activeClass); btnNew.classList.add(...inactiveClass);
+            } else {
+                btnNew.classList.add(...activeClass); btnNew.classList.remove(...inactiveClass);
+                btnOld.classList.remove(...activeClass); btnOld.classList.add(...inactiveClass);
+            }
+
+            renderMap();
+        }
+
+        function renderMap() {
+            layerGroup.clearLayers();
+            
+            // Group Data based on current View
+            const groups = {};
+            globalData.forEach(d => {
+                const truckId = currentViewMode === 'old' ? d.oldTruck : d.newTruck;
+                if (!groups[truckId]) groups[truckId] = [];
+                groups[truckId].push(d);
+            });
+
+            // Colors
+            const colors = ['#e6194b', '#3cb44b', '#ffe119', '#4363d8', '#f58231', '#911eb4', '#46f0f0', '#f032e6', '#bcf60c', '#fabebe', '#008080', '#e6beff', '#9a6324', '#fffac8', '#800000', '#aaffc3', '#808000', '#ffd8b1', '#000075'];
+            const truckColors = {};
+            Object.keys(groups).sort().forEach((id, i) => truckColors[id] = colors[i % colors.length]);
+
+            // Draw Zones (Convex Hulls) & Points
+            Object.keys(groups).forEach(truckId => {
+                const points = groups[truckId];
+                const color = truckColors[truckId];
+
+                // 1. Draw Zone (Polygon)
+                if (points.length >= 3) {
+                    const hullPoints = convexHull(points.map(p => ({ lat: p.lat, lng: p.lng })));
+                    L.polygon(hullPoints.map(p => [p.lat, p.lng]), {
+                        color: color, weight: 2, opacity: 0.6,
+                        fillColor: color, fillOpacity: 0.15
+                    }).addTo(layerGroup);
+                } else if (points.length === 2) {
+                     L.polyline(points.map(p => [p.lat, p.lng]), {
+                        color: color, weight: 2, opacity: 0.6, dashArray: '5, 5'
+                    }).addTo(layerGroup);
+                }
+
+                // 2. Draw Markers
+                points.forEach(p => {
+                    L.circleMarker([p.lat, p.lng], {
+                        radius: 5, fillColor: color, color: '#fff', weight: 1, opacity: 1, fillOpacity: 0.9
+                    })
+                    .bindPopup(`<b>${p.name}</b><br>Zone: ${truckId}<br>Sale: ${p.sale.toLocaleString()} L/wk`)
+                    .addTo(layerGroup);
+                });
+            });
+
+            // Add Legend
+            /* (Optional: Could add legend dynamically here if needed, but the toggle + tooltips usually suffice) */
+        }
+
+        function renderTable() {
+            const tbody = document.getElementById('tableBody');
+            tbody.innerHTML = '';
+
+            // Sort by change status first, then name
+            const sortedData = [...globalData].sort((a,b) => {
+                const changeA = a.oldTruck !== a.newTruck ? 0 : 1;
+                const changeB = b.oldTruck !== b.newTruck ? 0 : 1;
+                return changeA - changeB || a.name.localeCompare(b.name);
+            });
+
+            sortedData.forEach(d => {
+                const isChanged = d.oldTruck !== d.newTruck;
+                const tr = document.createElement('tr');
+                tr.className = "hover:bg-gray-50 transition-colors";
+                tr.innerHTML = `
+                    <td class="px-6 py-3 font-medium text-gray-900">
+                        ${d.name}
+                        ${isChanged ? '<span class="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800">ย้ายโซน</span>' : ''}
+                    </td>
+                    <td class="px-6 py-3 text-right font-mono text-gray-600">${d.sale.toLocaleString()}</td>
+                    <td class="px-6 py-3 text-gray-500">${d.oldTruck}</td>
+                    <td class="px-6 py-3 font-bold ${isChanged ? 'text-green-600' : 'text-gray-500'}">${d.newTruck}</td>
+                    <td class="px-6 py-3 text-center">
+                        ${isChanged 
+                            ? `<span class="text-xs text-gray-400">จาก ${d.oldTruck} &rarr; ${d.newTruck}</span>` 
+                            : '<span class="text-xs text-gray-300">-</span>'}
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        // Init
         initDashboard();
 
     </script>
