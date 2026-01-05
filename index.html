@@ -52,7 +52,7 @@
     <div id="loading">
         <div class="spinner"></div>
         <h2 style="font-size:1.1rem; font-weight:600; color:#374151;">กำลังคำนวณเส้นทาง...</h2>
-        <p style="font-size:0.9rem; color:#6b7280; margin-top:5px;">ดึงข้อมูลจาก Google Sheet ด้วยวิธี GViz</p>
+        <p style="font-size:0.9rem; color:#6b7280; margin-top:5px;">ดึงข้อมูลจาก Google  ด้วยวิธี GViz</p>
         <div id="error-msg"></div>
         <button id="btnRetry" class="btn-retry" style="display:none;" onclick="location.reload()">ลองใหม่</button>
     </div>
@@ -91,11 +91,11 @@
         // ==========================================
         // 1. CONFIGURATION
         // ==========================================
-        const SHEET_ID = "1KicClhZHtMr9bBmwLv31zvb0021SRUcGr2eRRagsO6c"; // ไอดี Sheet ของคุณ
+        const _ID = "19x1T9hf0GsTaT5DFKAk7-51A7s6PCd_Ty6P5X9n3A9M"; // ไอดี Sheet ของคุณ
         
         // *** สำคัญ: ชื่อ Tab (Sheet Name) ต้องตรงกับในไฟล์จริง ***
         // ลองเปลี่ยนเป็น "Sheet1" หากไม่พบข้อมูล
-        const SHEET_NAME = "optimized_routes_k-means"; 
+        const SHEET_NAME = "dataset"; 
 
         const FUEL_PRICE = 30; // บาท/ลิตร
         const FUEL_CONSUMPTION = 4; // กม./ลิตร
