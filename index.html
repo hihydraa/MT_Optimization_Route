@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Route Optimization Dashboard</title>
+    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+
+    <style>
+        body { font-family: 'Sarabun', sans-serif; margin: 0; padding: 20px; background: #f0f2f5; color: #333; }
+        .header { text-align: center; margin-bottom: 30px; }
+        .header h1 { margin: 0; color: #1a73e8; }
+        .header p { color: #666; }
+        
+        /* Stats Cards */
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; margin-bottom: 20px; }
+        .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); text-align: center; }
+        .card h3 { margin: 0 0 10px; font-size: 16px; color: #5f6368; }
+        .card .value { font-size: 28px; font-weight: bold; color: #202124; }
+        .card .sub-value { font-size: 14px; color: #5f6368; margin-top: 5px; }
+        .good { color: #188038 !important; }
+        
+        /* Map */
+        #map { height: 600px; width: 100%; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 1; }
+        
+        /* Loading */
+        #loading { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255,255,255,0.9); display: flex; justify-content: center; align-items: center; font-size: 20px; z-index: 9999; }
+        
+        /* Legend */
+        .info.legend { background: white; padding: 10px; border-radius: 5px; box-shadow: 0 0 15px rgba(0,0,0,0.2); line-height: 18px; color: #555; max-height: 300px; overflow-y: auto; }
+        .legend i { width: 18px; height: 18px; float: left; margin-right: 8px; opacity: 0.7; }
+    </style>
+</head>
+<body>
+
+    <div id="loading">กำลังดึงข้อมูลจาก Google Sheet...</div>
+
+    <div class="header">
+        <h1>Dashboard เปรียบเทียบเส้นทางเดินรถ</h1>
+        <p>วิเคราะห์ข้อมูลลูกค้าและแบ่งโซนใหม่ (K-Means Clustering)</p>
+    </div>
+
+    <div class="stats-grid">
+        <div class="card">
+            <h3>ระยะทางรวม (Total Distance)</h3>
+            <div class="value" id="dist-after">-</div>
+            <div class="sub-value">เดิม: <span id="dist-before">-</span> km</div>
+        </div>
+        <div class="card">
+            <h3>ต้นทุนน้ำมัน (Fuel Cost)</h3>
+            <div class="value" id="cost-after">-</div>
+            <div class="sub-value">เดิม: <span id="cost-before">-</span> THB</div>
+        </div>
+        <div class="card">
+            <h3>ประหยัดได้ (Savings)</h3>
+            <div class="value good" id="savings">-</div>
+            <div class="sub-value good" id="savings-pct">-</div>
+        </div>
+        <div class="card">
+            <h3>จำนวนลูกค้า (Customers)</h3>
+            <div class="value" id="total-customers">-</div>
+            <div class="sub-value">ย้ายโซน: <span id="moved-count">-</span> ราย</div>
+        </div>
+    </div>
+
+    <div id="map"></div>
+
+    <script>
+        // --- 1. CONFIGURATION: ใส่ลิงก์ CSV ของคุณตรงนี้ ---
+        const SHEET_CSV_URL = 'YOUR_GOOGLE_SHEET_CSV_URL'; 
+        // ตัวอย่าง: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQ.../pub?output=csv'
+        
+        const FUEL_PRICE = 30; // บาทต่อลิตร
+        const FUEL_CONSUMPTION = 4; // กิโลเมตรต่อลิตร
+
+        // --- 2. CALCULATION LOGIC ---
+        
+        // Haversine Distance (km)
+        function getDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371; // Radius of the earth in km
+            const dLat = deg2rad(lat2 - lat1);
+            const dLon = deg2rad(lon2 - lon1);
+            const a = 
+                Math.sin(dLat/2) * Math.sin(dLat/2) +
+                Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) * Math.sin(dLon/2) * Math.sin(dLon/2); 
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)); 
+            return R * c;
+        }
+
+        function deg2rad(deg) { return deg * (Math.PI/180); }
+
+        // Nearest Neighbor TSP Heuristic
+        function calculateRouteDistance(points, depot) {
+            if (points.length === 0) return 0;
+            let unvisited = [...points];
+            let current = depot;
+            let totalDist = 0;
+
+            while (unvisited.length > 0) {
+                let nearestIdx = -1;
+                let minDst = Infinity;
+
+                for (let i = 0; i < unvisited.length; i++) {
+                    const d = getDistance(current.lat, current.lng, unvisited[i].lat, unvisited[i].lng);
+                    if (d < minDst) {
+                        minDst = d;
+                        nearestIdx = i;
+                    }
+                }
+                
+                totalDist += minDst;
+                current = unvisited[nearestIdx];
+                unvisited.splice(nearestIdx, 1);
+            }
+            // Return to depot
+            totalDist += getDistance(current.lat, current.lng, depot.lat, depot.lng);
+            return totalDist;
+        }
+
+        // --- 3. MAIN APPLICATION ---
+        
+        Papa.parse(SHEET_CSV_URL, {
+            download: true,
+            header: true,
+            complete: function(results) {
+                const data = results.data.filter(r => r.latitude && r.longitude); // Filter empty rows
+                
+                if(data.length === 0) {
+                    alert("ไม่พบข้อมูล หรือ Link Google Sheet ไม่ถูกต้อง");
+                    return;
+                }
+
+                initDashboard(data);
+                document.getElementById('loading').style.display = 'none';
+            },
+            error: function(err) {
+                alert("เกิดข้อผิดพลาดในการดึงข้อมูล: " + err);
+            }
+        });
+
+        function initDashboard(data) {
+            // 1. Calculate Depot (Mean Lat/Lng)
+            const lats = data.map(d => parseFloat(d.latitude));
+            const lngs = data.map(d => parseFloat(d.longitude));
+            const depot = {
+                lat: lats.reduce((a,b)=>a+b,0)/lats.length,
+                lng: lngs.reduce((a,b)=>a+b,0)/lngs.length
+            };
+
+            // 2. Group Data
+            const groupsBefore = {};
+            const groupsAfter = {};
+            let movedCount = 0;
+
+            data.forEach(d => {
+                const lat = parseFloat(d.latitude);
+                const lng = parseFloat(d.longitude);
+                const point = { lat, lng, ...d };
+
+                // Group Before
+                if(!groupsBefore[d.current_truck_id]) groupsBefore[d.current_truck_id] = [];
+                groupsBefore[d.current_truck_id].push(point);
+
+                // Group After
+                if(!groupsAfter[d['assigned_truck_K-Means']]) groupsAfter[d['assigned_truck_K-Means']] = [];
+                groupsAfter[d['assigned_truck_K-Means']].push(point);
+
+                // Count Changes
+                if(d.current_truck_id !== d['assigned_truck_K-Means']) movedCount++;
+            });
+
+            // 3. Calculate Distances
+            let totalDistBefore = 0;
+            Object.values(groupsBefore).forEach(group => {
+                totalDistBefore += calculateRouteDistance(group, depot);
+            });
+
+            let totalDistAfter = 0;
+            Object.values(groupsAfter).forEach(group => {
+                totalDistAfter += calculateRouteDistance(group, depot);
+            });
+
+            // 4. Update UI Stats
+            const costBefore = (totalDistBefore / FUEL_CONSUMPTION) * FUEL_PRICE;
+            const costAfter = (totalDistAfter / FUEL_CONSUMPTION) * FUEL_PRICE;
+            const savings = costBefore - costAfter;
+
+            document.getElementById('dist-before').innerText = totalDistBefore.toLocaleString(undefined, {maximumFractionDigits:2});
+            document.getElementById('dist-after').innerText = totalDistAfter.toLocaleString(undefined, {maximumFractionDigits:2}) + " km";
+            
+            document.getElementById('cost-before').innerText = costBefore.toLocaleString(undefined, {maximumFractionDigits:0});
+            document.getElementById('cost-after').innerText = costAfter.toLocaleString(undefined, {maximumFractionDigits:0}) + " THB";
+            
+            document.getElementById('savings').innerText = savings.toLocaleString(undefined, {maximumFractionDigits:0}) + " THB";
+            document.getElementById('savings-pct').innerText = "(" + ((savings/costBefore)*100).toFixed(2) + "%)";
+            
+            document.getElementById('total-customers').innerText = data.length;
+            document.getElementById('moved-count').innerText = movedCount;
+
+            // 5. Draw Map
+            drawMap(data, depot, groupsAfter);
+        }
+
+        function drawMap(data, depot, groupsAfter) {
+            const map = L.map('map').setView([depot.lat, depot.lng], 9);
+            
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap'
+            }).addTo(map);
+
+            // Depot Marker
+            L.marker([depot.lat, depot.lng])
+             .bindPopup("<b>จุดศูนย์กลาง (Depot)</b><br>คำนวณจากค่าเฉลี่ยพิกัด")
+             .addTo(map);
+
+            // Generate Colors for Trucks
+            const truckIds = Object.keys(groupsAfter);
+            const colors = ['#e6194b', '#3cb44b', '#ffe119', '#4363d8', '#f58231', '#911eb4', '#46f0f0', '#f032e6', '#bcf60c', '#fabebe', '#008080', '#e6beff', '#9a6324', '#fffac8', '#800000', '#aaffc3', '#808000', '#ffd8b1', '#000075'];
+            const colorMap = {};
+            truckIds.forEach((id, i) => colorMap[id] = colors[i % colors.length]);
+
+            // Draw Points
+            data.forEach(p => {
+                const truck = p['assigned_truck_K-Means'];
+                const oldTruck = p.current_truck_id;
+                const isChanged = truck !== oldTruck;
+
+                L.circleMarker([p.latitude, p.longitude], {
+                    radius: 6,
+                    fillColor: colorMap[truck],
+                    color: "#fff",
+                    weight: 1,
+                    opacity: 1,
+                    fillOpacity: 0.8
+                }).bindPopup(`
+                    <b>${p.customer_name}</b><br>
+                    <hr style="margin:5px 0">
+                    รถคันใหม่: <b>${truck}</b><br>
+                    รถคันเดิม: ${oldTruck}<br>
+                    ${isChanged ? '<span style="color:red; font-size:12px;">(มีการเปลี่ยนคันรถ)</span>' : ''}
+                `).addTo(map);
+            });
+
+            // Add Legend
+            const legend = L.control({position: 'bottomright'});
+            legend.onAdd = function (map) {
+                const div = L.DomUtil.create('div', 'info legend');
+                div.innerHTML = '<h4>โซนรถ (ใหม่)</h4>';
+                truckIds.forEach(id => {
+                    div.innerHTML += 
+                        '<i style="background:' + colorMap[id] + '"></i> ' +
+                        id + '<br>';
+                });
+                return div;
+            };
+            legend.addTo(map);
+        }
+    </script>
+</body>
+</html>
