@@ -171,8 +171,7 @@
 
     function toStr(v, fallback = "") {
       if (v === null || v === undefined) return fallback;
-      const s = String(v).trim();
-      return s;
+      return String(v).trim();
     }
 
     function toNum(v, fallback = NaN) {
@@ -186,39 +185,18 @@
       return s === "" || s.toLowerCase() === "null" || s.toLowerCase() === "undefined";
     }
 
-    // Deterministic color by truck_id (ให้สีเหมือนเดิมตาม truck_id เสมอ)
-    const TRUCK_COLORS = [
-      '#e6194b', '#3cb44b', '#ffe119', '#4363d8', '#f58231', '#911eb4', '#46f0f0',
-      '#f032e6', '#bcf60c', '#fabebe', '#008080', '#e6beff', '#9a6324', '#fffac8',
-      '#800000', '#aaffc3', '#808000', '#ffd8b1', '#000075'
-    ];
-
-    function hashString(str) {
-      // simple hash (stable)
-      let h = 2166136261;
-      for (let i = 0; i < str.length; i++) {
-        h ^= str.charCodeAt(i);
-        h = Math.imul(h, 16777619);
-      }
-      return (h >>> 0);
-    }
-
-    function colorByTruckId(truckId) {
-      const key = String(truckId || "").trim() || "Unknown";
-      const idx = hashString(key) % TRUCK_COLORS.length;
-      return TRUCK_COLORS[idx];
-    }
-
-    // Convex Hull
+    // ==========================================
+    // Convex Hull (Monotone Chain) - from reference
+    // ==========================================
     function convexHull(points) {
-      const pts = [...points].sort((a, b) => a.lat !== b.lat ? a.lat - b.lat : a.lng - b.lng);
+      points.sort((a, b) => a.lat != b.lat ? a.lat - b.lat : a.lng - b.lng);
       const cross = (a, b, o) => (a.lat - o.lat) * (b.lng - o.lng) - (a.lng - o.lng) * (b.lat - o.lat);
       const upper = [], lower = [];
-      for (const p of pts) {
+      for (const p of points) {
         while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) upper.pop();
         upper.push(p);
       }
-      for (const p of pts.reverse()) {
+      for (const p of points.reverse()) {
         while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) lower.pop();
         lower.push(p);
       }
@@ -237,11 +215,10 @@
     }
 
     function calculateRouteCost(points, depot) {
-      if (!points.length) return 0;
+      if (points.length === 0) return 0;
       let unvisited = [...points];
       let current = depot;
       let totalDist = 0;
-
       while (unvisited.length > 0) {
         let nearestIdx = -1, minDst = Infinity;
         for (let i = 0; i < unvisited.length; i++) {
@@ -267,10 +244,7 @@
       const cols = json.table.cols.map(c => c ? (c.label || c.id) : "");
       return json.table.rows.map(r => {
         const obj = {};
-        cols.forEach((colName, i) => {
-          if (!colName) return;
-          obj[colName] = (r.c && r.c[i]) ? r.c[i].v : null;
-        });
+        cols.forEach((colName, i) => { if (colName) obj[colName] = (r.c && r.c[i]) ? (r.c[i].v) : null; });
         return obj;
       });
     }
@@ -288,35 +262,38 @@
         const NAME_KEYS = ["customer_name","ชื่อลูกค้า","Customer","name","ร้านค้า"];
         const SALE_KEYS = ["sale_per_wk","sale_per_week","ยอดขาย/สัปดาห์"];
         const OLD_TRUCK_KEYS = ["current_truck_id","current_truck","Current_truck"];
-        const KMEANS_KEYS = ["assigned_truck_K-Means","assigned_truck_K_Means","assigned_truck_kmeans","assigned_truck_KMeans"];
+        const KMEANS_KEYS = ["assigned_truck_K-Means","assigned_truck_K_Means","assigned_truck_kmeans","assigned_truck_KMeans","assigned_truck_K-Means "];
         const ACTUAL_KEYS = ["Actual_truck","actual_truck","ACTUAL_TRUCK"];
         const CLUSTER_KEYS = ["cluster_label","cluster","Cluster","clusterLabel"];
 
-        globalData = rawData.map(d => {
-          const lat = toNum(pick(d, LAT_KEYS), NaN);
-          const lng = toNum(pick(d, LNG_KEYS), NaN);
+        globalData = rawData
+          .filter(d => pick(d, LAT_KEYS) && pick(d, LNG_KEYS))
+          .map(d => {
+            const lat = parseFloat(pick(d, LAT_KEYS));
+            const lng = parseFloat(pick(d, LNG_KEYS));
 
-          const oldTruck = toStr(pick(d, OLD_TRUCK_KEYS), "");
-          const newTruck = toStr(pick(d, KMEANS_KEYS), "");
-          const actualTruck = toStr(pick(d, ACTUAL_KEYS), "");
-          const clusterLabelRaw = pick(d, CLUSTER_KEYS, null);
+            const oldTruck = toStr(pick(d, OLD_TRUCK_KEYS), "Unknown") || "Unknown";
+            const newTruck = toStr(pick(d, KMEANS_KEYS), "Unknown") || "Unknown";
+            const actualTruck = toStr(pick(d, ACTUAL_KEYS), ""); // allow blank
+            const clusterLabelRaw = pick(d, CLUSTER_KEYS, null);
 
-          let clusterLabel = null;
-          if (clusterLabelRaw !== null && clusterLabelRaw !== undefined && String(clusterLabelRaw).trim() !== "") {
-            clusterLabel = Number(clusterLabelRaw);
-            if (!Number.isFinite(clusterLabel)) clusterLabel = null;
-          }
+            let clusterLabel = null;
+            if (clusterLabelRaw !== null && clusterLabelRaw !== undefined && String(clusterLabelRaw).trim() !== "") {
+              const n = Number(clusterLabelRaw);
+              clusterLabel = Number.isFinite(n) ? n : null;
+            }
 
-          return {
-            lat, lng,
-            name: toStr(pick(d, NAME_KEYS), "ลูกค้า") || "ลูกค้า",
-            sale: Number(pick(d, SALE_KEYS)) || 0,
-            oldTruck: oldTruck || "Unknown",
-            newTruck: newTruck || "Unknown",
-            actualTruck: actualTruck, // อนุญาตให้ว่าง (เพื่อ filter ในโหมด actual)
-            clusterLabel
-          };
-        }).filter(x => Number.isFinite(x.lat) && Number.isFinite(x.lng));
+            return {
+              lat, lng,
+              name: toStr(pick(d, NAME_KEYS), "ลูกค้า") || "ลูกค้า",
+              sale: parseFloat(pick(d, SALE_KEYS)) || 0,
+              oldTruck,
+              newTruck,
+              actualTruck,
+              clusterLabel
+            };
+          })
+          .filter(x => Number.isFinite(x.lat) && Number.isFinite(x.lng));
 
         if (!globalData.length) throw new Error("ไม่มีพิกัด latitude/longitude ที่ใช้งานได้");
 
@@ -326,7 +303,7 @@
         };
 
         map = L.map('map').setView([globalDepot.lat, globalDepot.lng], 9);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
         layerGroup = L.layerGroup().addTo(map);
 
@@ -347,7 +324,7 @@
     }
 
     // ==========================================
-    // STATS (Old vs New)
+    // STATS
     // ==========================================
     function calculateStats() {
       const groupsOld = {}, groupsNew = {};
@@ -408,46 +385,47 @@
     }
 
     // ==========================================
-    // ZONE COLOR (Green/Yellow/Red) by cluster_label
+    // NOTE:
+    // You asked:
+    // - "สี pin" ให้เหมือน reference: สี = mapping ตาม id ที่ถูก sort ใน view นั้น
+    // - "สีพื้นที่" ให้เหมือน reference: พื้นที่ = polygon ตาม truckId ใน view นั้น (ไม่ใช่ตาม cluster)
+    // BUT you also need: highlight พื้นที่ขายเขียว/เหลือง/แดงเหมือนเดิม
+    //
+    // Solution (ตรงตาม reference + highlight ขาย):
+    // 1) วาด Highlight พื้นที่ขาย (cluster) ก่อน (เขียว/เหลือง/แดง)
+    // 2) วาด Polygon Zone + Pin ตาม reference ของ view (old/new/actual):
+    //    - group ตาม truckId (old/new/actual)
+    //    - colors = palette แล้ว assign จาก Object.keys(groups).sort() เหมือน reference
+    // 3) ใน actual mode: skip ลูกค้าที่ Actual_truck ว่าง
     // ==========================================
+
+    // cluster -> green/yellow/red highlight (พื้นหลัง)
     function clusterToColor(label) {
-      // รองรับทั้ง 0/1/2 หรือ 1/2/3
-      // - ถ้า 0/1/2: 0=แดง, 1=เหลือง, 2=เขียว
-      // - ถ้า 1/2/3: 1=แดง, 2=เหลือง, 3=เขียว
       const n = Number(label);
-      if (!Number.isFinite(n)) return { stroke: '#64748b', fill: '#64748b' }; // gray fallback
-
-      if (n === 0 || n === 1) return { stroke: '#ef4444', fill: '#ef4444' }; // red
-      if (n === 2) return { stroke: '#f59e0b', fill: '#f59e0b' };            // yellow
-      if (n === 3) return { stroke: '#22c55e', fill: '#22c55e' };            // green
-
-      // ถ้าเป็น 0/1/2 แบบชัดเจน
-      if (n === 0) return { stroke: '#ef4444', fill: '#ef4444' };
-      if (n === 1) return { stroke: '#f59e0b', fill: '#f59e0b' };
-      if (n === 2) return { stroke: '#22c55e', fill: '#22c55e' };
-
+      if (!Number.isFinite(n)) return { stroke: '#64748b', fill: '#64748b' };
+      // รองรับ 0/1/2 หรือ 1/2/3
+      if (n === 0) return { stroke: '#ef4444', fill: '#ef4444' }; // red
+      if (n === 1) return { stroke: '#f59e0b', fill: '#f59e0b' }; // yellow
+      if (n === 2) return { stroke: '#22c55e', fill: '#22c55e' }; // green
+      if (n === 3) return { stroke: '#22c55e', fill: '#22c55e' }; // green (fallback)
       return { stroke: '#64748b', fill: '#64748b' };
     }
 
-    // ==========================================
-    // MAP RENDER
-    // - Polygons: by cluster_label (Green/Yellow/Red) ALWAYS
-    // - Pins: color by truck_id (same behavior as reference)
-    // - Actual tab: skip if Actual_truck blank
-    // ==========================================
     function renderMap() {
       layerGroup.clearLayers();
 
-      // Remove old legend
       if (legendControl) {
         try { map.removeControl(legendControl); } catch (e) {}
         legendControl = null;
       }
 
-      // 1) Draw highlight zones by cluster_label
+      // ------------------------------
+      // A) Highlight พื้นที่ขาย (cluster) ก่อน
+      // ------------------------------
       const clusterGroups = {};
       globalData.forEach(d => {
-        const key = (d.clusterLabel === null || d.clusterLabel === undefined) ? 'unknown' : String(d.clusterLabel);
+        const key = (d.clusterLabel === null || d.clusterLabel === undefined) ? null : String(d.clusterLabel);
+        if (!key) return; // ถ้าไม่มี cluster_label ไม่ต้อง highlight
         if (!clusterGroups[key]) clusterGroups[key] = [];
         clusterGroups[key].push(d);
       });
@@ -456,59 +434,78 @@
         const pts = clusterGroups[k];
         if (pts.length < 2) return;
 
-        const col = (k === 'unknown') ? { stroke: '#64748b', fill: '#64748b' } : clusterToColor(Number(k));
+        const col = clusterToColor(Number(k));
 
         if (pts.length >= 3) {
           const hull = convexHull(pts.map(p => ({ lat: p.lat, lng: p.lng })));
           L.polygon(hull.map(p => [p.lat, p.lng]), {
-            color: col.stroke,
-            weight: 2,
-            opacity: 0.9,
-            fillColor: col.fill,
-            fillOpacity: 0.18
+            color: col.stroke, weight: 2, opacity: 0.6,
+            fillColor: col.fill, fillOpacity: 0.15
           }).addTo(layerGroup);
         } else if (pts.length === 2) {
           L.polyline(pts.map(p => [p.lat, p.lng]), {
-            color: col.stroke,
-            weight: 2,
-            opacity: 0.9,
-            dashArray: '5,5'
+            color: col.stroke, weight: 2, opacity: 0.6, dashArray: '5, 5'
           }).addTo(layerGroup);
         }
       });
 
-      // 2) Draw pins by current view
-      globalData.forEach(p => {
-        let truckId =
-          currentViewMode === 'old' ? p.oldTruck :
-          currentViewMode === 'new' ? p.newTruck :
-          p.actualTruck;
+      // ------------------------------
+      // B) Zone + Pin ตาม reference (group by truckId ของ view)
+      // ------------------------------
+      const groups = {};
+      globalData.forEach(d => {
+        const truckId =
+          currentViewMode === 'old' ? d.oldTruck :
+          currentViewMode === 'new' ? d.newTruck :
+          d.actualTruck;
 
-        // Actual tab: ถ้า Actual_truck blank => ไม่ plot
+        // Actual mode: skip blank
         if (currentViewMode === 'actual' && isBlankTruck(truckId)) return;
 
-        truckId = String(truckId || 'Unknown').trim();
-        const pinColor = colorByTruckId(truckId);
-
-        L.circleMarker([p.lat, p.lng], {
-          radius: 5,
-          fillColor: pinColor,
-          color: '#fff',
-          weight: 1,
-          opacity: 1,
-          fillOpacity: 0.9
-        })
-        .bindPopup(`
-          <b>${p.name}</b><br>
-          Truck: <b>${truckId}</b><br>
-          K-Means Zone: <b>${p.newTruck}</b><br>
-          Cluster: <b>${p.clusterLabel ?? '-'}</b><br>
-          Sale: ${Number(p.sale || 0).toLocaleString('th-TH')} L/wk
-        `)
-        .addTo(layerGroup);
+        if (!groups[truckId]) groups[truckId] = [];
+        groups[truckId].push(d);
       });
 
-      // 3) Legend
+      // Colors EXACTLY like reference
+      const colors = ['#e6194b', '#3cb44b', '#ffe119', '#4363d8', '#f58231', '#911eb4', '#46f0f0', '#f032e6', '#bcf60c', '#fabebe', '#008080', '#e6beff', '#9a6324', '#fffac8', '#800000', '#aaffc3', '#808000', '#ffd8b1', '#000075'];
+      const truckColors = {};
+      Object.keys(groups).sort().forEach((id, i) => truckColors[id] = colors[i % colors.length]);
+
+      Object.keys(groups).forEach(truckId => {
+        const points = groups[truckId];
+        const color = truckColors[truckId];
+
+        // 1) Polygon zone by truckId (reference behavior)
+        if (points.length >= 3) {
+          const hullPoints = convexHull(points.map(p => ({ lat: p.lat, lng: p.lng })));
+          L.polygon(hullPoints.map(p => [p.lat, p.lng]), {
+            color: color, weight: 2, opacity: 0.6,
+            fillColor: color, fillOpacity: 0.15
+          }).addTo(layerGroup);
+        } else if (points.length === 2) {
+          L.polyline(points.map(p => [p.lat, p.lng]), {
+            color: color, weight: 2, opacity: 0.6, dashArray: '5, 5'
+          }).addTo(layerGroup);
+        }
+
+        // 2) Markers (reference behavior)
+        points.forEach(p => {
+          L.circleMarker([p.lat, p.lng], {
+            radius: 5, fillColor: color, color: '#fff', weight: 1, opacity: 1, fillOpacity: 0.9
+          })
+          .bindPopup(`
+            <b>${p.name}</b><br>
+            Zone: ${truckId}<br>
+            Sale: ${Number(p.sale || 0).toLocaleString('th-TH')} L/wk<br>
+            Cluster: ${p.clusterLabel ?? '-'}
+          `)
+          .addTo(layerGroup);
+        });
+      });
+
+      // ------------------------------
+      // C) Legend (simple)
+      // ------------------------------
       legendControl = L.control({ position: 'bottomleft' });
       legendControl.onAdd = function() {
         const div = L.DomUtil.create('div', 'legend-box');
@@ -517,22 +514,22 @@
 
           <div class="legend-row">
             <span class="legend-swatch" style="background:#22c55e;"></span>
-            <span style="color:#6b7280;">พื้นที่ขาย (Cluster) = เขียว</span>
+            <span style="color:#6b7280;">Highlight พื้นที่ขาย = เขียว</span>
           </div>
           <div class="legend-row">
             <span class="legend-swatch" style="background:#f59e0b;"></span>
-            <span style="color:#6b7280;">พื้นที่ขาย (Cluster) = เหลือง</span>
+            <span style="color:#6b7280;">Highlight พื้นที่ขาย = เหลือง</span>
           </div>
           <div class="legend-row">
             <span class="legend-swatch" style="background:#ef4444;"></span>
-            <span style="color:#6b7280;">พื้นที่ขาย (Cluster) = แดง</span>
+            <span style="color:#6b7280;">Highlight พื้นที่ขาย = แดง</span>
           </div>
 
           <hr style="margin:8px 0; border:none; border-top:1px solid rgba(0,0,0,0.08);" />
 
           <div class="legend-row">
             <span class="legend-dot" style="background:#111827;"></span>
-            <span style="color:#6b7280;">สี Pin = ตาม truck_id (คงที่เหมือนเดิม)</span>
+            <span style="color:#6b7280;">Zone + Pin = สีตาม truckId (เหมือน reference)</span>
           </div>
 
           <div style="color:#9ca3af; margin-top:6px;">
@@ -567,7 +564,6 @@
       });
     }
 
-    // Init
     initDashboard();
   </script>
 </body>
