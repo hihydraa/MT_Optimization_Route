@@ -153,6 +153,15 @@
     let legendControl;
     let currentViewMode = 'new';
 
+    // -------------------------------------------------
+    // ✅ FIX: ล็อกสีตาม Truck ID ให้คงที่ทุก View
+    // -------------------------------------------------
+    const TRUCK_COLOR_MAP = {
+      "MT-60": "#ef4444", // แดง
+      "MT-67": "#22c55e", // เขียว
+      "MT-71": "#f59e0b", // เหลือง
+    };
+
     const COLORS = ['#e6194b', '#3cb44b', '#ffe119', '#4363d8', '#f58231', '#911eb4', '#46f0f0', '#f032e6', '#bcf60c', '#fabebe', '#008080', '#e6beff', '#9a6324', '#fffac8', '#800000', '#aaffc3', '#808000', '#ffd8b1', '#000075'];
 
     function pick(obj, keys, fallback = null) {
@@ -168,7 +177,6 @@
       return s === "" || s.toLowerCase() === "null" || s.toLowerCase() === "undefined";
     }
 
-    // Convex Hull (reference)
     function convexHull(points) {
       points.sort((a, b) => a.lat != b.lat ? a.lat - b.lat : a.lng - b.lng);
       const cross = (a, b, o) => (a.lat - o.lat) * (b.lng - o.lng) - (a.lng - o.lng) * (b.lat - o.lat);
@@ -346,15 +354,12 @@
       renderMap();
     }
 
-    // highlight K-Means by cluster_label (0=แดง,1=เหลือง,2=เขียว) รองรับ 1/2/3 ด้วย
     function clusterToColor(label) {
       const n = Number(label);
       if (!Number.isFinite(n)) return { stroke: '#64748b', fill: '#64748b' };
-      // ถ้าเป็น 0/1/2
       if (n === 0) return { stroke: '#ef4444', fill: '#ef4444' };
       if (n === 1) return { stroke: '#f59e0b', fill: '#f59e0b' };
       if (n === 2) return { stroke: '#22c55e', fill: '#22c55e' };
-      // ถ้าเป็น 1/2/3
       if (n === 3) return { stroke: '#22c55e', fill: '#22c55e' };
       return { stroke: '#64748b', fill: '#64748b' };
     }
@@ -387,7 +392,7 @@
           </div>
 
           <div style="color:#9ca3af; margin-top:6px;">
-            Current: zone/pin = current (อย่างเดียว) | K-Means: + highlight | Actual: highlight = K-Means, pin = Actual (skip blank)
+            Current: zone/pin = current | K-Means: zone/pin = kmeans | Actual: pin = actual (skip blank)
           </div>
         `;
         return div;
@@ -403,11 +408,8 @@
         legendControl = null;
       }
 
-      // -------------------------
       // 1) Highlight layer
-      // -------------------------
       if (currentViewMode === 'new' || currentViewMode === 'actual') {
-        // highlight K-Means (cluster_label)
         const clusterGroups = {};
         globalData.forEach(d => {
           if (d.clusterLabel === null || d.clusterLabel === undefined) return;
@@ -435,12 +437,7 @@
         });
       }
 
-      // -------------------------
-      // 2) Zone + Pin (reference grouping)
-      // - old: zone+pin by oldTruck
-      // - new: zone+pin by newTruck
-      // - actual: pin only by actualTruck (skip blank)  **no zone polygon**
-      // -------------------------
+      // 2) Zone + Pin grouping
       const groups = {};
       globalData.forEach(d => {
         const truckId =
@@ -454,14 +451,19 @@
         groups[truckId].push(d);
       });
 
+      // -------------------------------------------------
+      // ✅ FIX: ใช้สีจาก TRUCK_COLOR_MAP ก่อนเสมอ
+      // -------------------------------------------------
       const truckColors = {};
-      Object.keys(groups).sort().forEach((id, i) => truckColors[id] = COLORS[i % COLORS.length]);
+      Object.keys(groups).sort().forEach((id, i) => {
+        truckColors[id] = TRUCK_COLOR_MAP[id] || COLORS[i % COLORS.length];
+      });
 
       Object.keys(groups).forEach(truckId => {
         const points = groups[truckId];
         const color = truckColors[truckId];
 
-        // ✅ วาด zone polygon เฉพาะ old/new (reference)
+        // zone polygon เฉพาะ old/new
         if (currentViewMode !== 'actual') {
           if (points.length >= 3) {
             const hullPoints = convexHull(points.map(p => ({ lat: p.lat, lng: p.lng })));
