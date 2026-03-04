@@ -415,127 +415,139 @@
       legendControl.addTo(map);
     }
 
-    function renderMap() {
-      layerGroup.clearLayers();
+   function renderMap() {
+  layerGroup.clearLayers();
 
-      if (legendControl) {
-        try { map.removeControl(legendControl); } catch (e) {}
-        legendControl = null;
+  if (legendControl) {
+    try { map.removeControl(legendControl); } catch (e) {}
+    legendControl = null;
+  }
+
+  // -------------------------
+  // 1) Highlight layer (ตาม cluster_label)
+  // ให้แสดงเฉพาะ "K-Means" (new) เท่านั้น
+  // เพราะใน Actual จะทำให้คนอ่านสับสนกับโซน K-Means
+  // -------------------------
+  if (currentViewMode === 'new') {
+    const clusterGroups = {};
+    globalData.forEach(d => {
+      if (d.clusterLabel === null || d.clusterLabel === undefined) return;
+      const key = String(d.clusterLabel);
+      if (!clusterGroups[key]) clusterGroups[key] = [];
+      clusterGroups[key].push(d);
+    });
+
+    Object.keys(clusterGroups).forEach(k => {
+      const pts = clusterGroups[k];
+      if (pts.length < 2) return;
+      const col = clusterToColor(Number(k));
+
+      if (pts.length >= 3) {
+        const hull = convexHull(pts.map(p => ({ lat: p.lat, lng: p.lng })));
+        L.polygon(hull.map(p => [p.lat, p.lng]), {
+          color: col.stroke, weight: 2, opacity: 0.6,
+          fillColor: col.fill, fillOpacity: 0.15
+        }).addTo(layerGroup);
+      } else if (pts.length === 2) {
+        L.polyline(pts.map(p => [p.lat, p.lng]), {
+          color: col.stroke, weight: 2, opacity: 0.6, dashArray: '5, 5'
+        }).addTo(layerGroup);
       }
+    });
+  }
 
-      // -------------------------
-      // 1) Highlight layer (คงเดิม: แสดงใน new/actual)
-      // -------------------------
-      if (currentViewMode === 'new' || currentViewMode === 'actual') {
-        const clusterGroups = {};
-        globalData.forEach(d => {
-          if (d.clusterLabel === null || d.clusterLabel === undefined) return;
-          const key = String(d.clusterLabel);
-          if (!clusterGroups[key]) clusterGroups[key] = [];
-          clusterGroups[key].push(d);
-        });
+  // -------------------------
+  // 2) กำหนด "โซน (polygon)" และ "จุด (pin)" ตามโหมด
+  // -------------------------
+  const zoneKeyFn = (d) => {
+    if (currentViewMode === 'old') return d.oldTruck;     // Current
+    return d.newTruck;                                   // K-Means + Actual ใช้โซน K-Means
+  };
 
-        Object.keys(clusterGroups).forEach(k => {
-          const pts = clusterGroups[k];
-          if (pts.length < 2) return;
-          const col = clusterToColor(Number(k));
+  const pinKeyFn = (d) => {
+    if (currentViewMode === 'old') return d.oldTruck;     // Current
+    if (currentViewMode === 'new') return d.newTruck;     // ✅ K-Means: จุดต้องเป็น K-Means
+    return d.actualTruck;                                 // ✅ Actual: จุดเป็น Actual
+  };
 
-          if (pts.length >= 3) {
-            const hull = convexHull(pts.map(p => ({ lat: p.lat, lng: p.lng })));
-            L.polygon(hull.map(p => [p.lat, p.lng]), {
-              color: col.stroke, weight: 2, opacity: 0.6,
-              fillColor: col.fill, fillOpacity: 0.15
-            }).addTo(layerGroup);
-          } else if (pts.length === 2) {
-            L.polyline(pts.map(p => [p.lat, p.lng]), {
-              color: col.stroke, weight: 2, opacity: 0.6, dashArray: '5, 5'
-            }).addTo(layerGroup);
-          }
-        });
-      }
+  // -------------------------
+  // 3) สร้าง groups สำหรับ polygon (zone)
+  // -------------------------
+  const zoneGroups = {};
+  globalData.forEach(d => {
+    const zoneId = zoneKeyFn(d);
+    if (!zoneGroups[zoneId]) zoneGroups[zoneId] = [];
+    zoneGroups[zoneId].push(d);
+  });
 
-      // -------------------------
-      // 2) Zone groups (Polygon)
-      // - old: zone = oldTruck (เหมือนเดิม)
-      // - new/actual: zone = newTruck (โซน K-Means)
-      // -------------------------
-      const zoneGroups = {};
-      globalData.forEach(d => {
-        const zoneTruckId =
-          currentViewMode === 'old'
-            ? d.oldTruck
-            : d.newTruck; // ✅ new & actual ใช้โซน K-Means
+  // สร้างสีให้แต่ละ truckId (แบบเดิมของคุณ)
+  // ถ้าคุณมี getTruckColor() อยู่แล้ว ให้ใช้: const color = getTruckColor(truckId);
+  const zoneColors = {};
+  Object.keys(zoneGroups).sort().forEach((id, i) => zoneColors[id] = COLORS[i % COLORS.length]);
 
-        if (!zoneGroups[zoneTruckId]) zoneGroups[zoneTruckId] = [];
-        zoneGroups[zoneTruckId].push(d);
-      });
+  // วาด polygon ทุกโหมด (รวม actual ด้วย เพราะ actual ต้องใช้โซน K-Means)
+  Object.keys(zoneGroups).forEach(truckId => {
+    const points = zoneGroups[truckId];
+    const color = zoneColors[truckId]; // หรือ getTruckColor(truckId)
 
-      // วาด polygon ตาม zoneGroups
-      Object.keys(zoneGroups).forEach(truckId => {
-        const points = zoneGroups[truckId];
-        const color = getTruckColor(truckId);
-
-        if (points.length >= 3) {
-          const hullPoints = convexHull(points.map(p => ({ lat: p.lat, lng: p.lng })));
-          L.polygon(hullPoints.map(p => [p.lat, p.lng]), {
-            color: color, weight: 2, opacity: 0.6,
-            fillColor: color, fillOpacity: 0.15
-          }).addTo(layerGroup);
-        } else if (points.length === 2) {
-          L.polyline(points.map(p => [p.lat, p.lng]), {
-            color: color, weight: 2, opacity: 0.6, dashArray: '5, 5'
-          }).addTo(layerGroup);
-        }
-      });
-
-      // -------------------------
-      // 3) Pin groups (Markers)
-      // - old: pin = oldTruck (เหมือนเดิม)
-      // - new/actual: pin = actualTruck (skip blank)
-      // -------------------------
-      const pinGroups = {};
-      globalData.forEach(d => {
-        const pinTruckId =
-          currentViewMode === 'old'
-            ? d.oldTruck
-            : d.actualTruck; // ✅ new & actual ใช้จุด Actual
-
-        if (currentViewMode !== 'old' && isBlankTruck(pinTruckId)) return;
-
-        if (!pinGroups[pinTruckId]) pinGroups[pinTruckId] = [];
-        pinGroups[pinTruckId].push(d);
-      });
-
-      // วาด pins ตาม pinGroups
-      Object.keys(pinGroups).forEach(truckId => {
-        const points = pinGroups[truckId];
-        const color = getTruckColor(truckId);
-
-        points.forEach(p => {
-          L.circleMarker([p.lat, p.lng], {
-            radius: 5,
-            fillColor: color,
-            color: '#fff',
-            weight: 1,
-            opacity: 1,
-            fillOpacity: 0.9
-          })
-          .bindPopup(`
-            <b>${p.name}</b><br>
-            Pin Truck: <b>${truckId}</b><br>
-            Current: ${p.oldTruck}<br>
-            K-Means: ${p.newTruck}<br>
-            Actual: ${isBlankTruck(p.actualTruck) ? '-' : p.actualTruck}<br>
-            Cluster: ${p.clusterLabel ?? '-'}<br>
-            Sale: ${Number(p.sale || 0).toLocaleString('th-TH')} L/wk
-          `)
-          .addTo(layerGroup);
-        });
-      });
-
-      addLegend();
+    if (points.length >= 3) {
+      const hullPoints = convexHull(points.map(p => ({ lat: p.lat, lng: p.lng })));
+      L.polygon(hullPoints.map(p => [p.lat, p.lng]), {
+        color: color, weight: 2, opacity: 0.6,
+        fillColor: color, fillOpacity: 0.15
+      }).addTo(layerGroup);
+    } else if (points.length === 2) {
+      L.polyline(points.map(p => [p.lat, p.lng]), {
+        color: color, weight: 2, opacity: 0.6, dashArray: '5, 5'
+      }).addTo(layerGroup);
     }
+  });
 
+  // -------------------------
+  // 4) สร้าง groups สำหรับ pins
+  // -------------------------
+  const pinGroups = {};
+  globalData.forEach(d => {
+    const pinId = pinKeyFn(d);
+
+    // โหมด actual: skip blank actual_truck
+    if (currentViewMode === 'actual' && isBlankTruck(pinId)) return;
+
+    if (!pinGroups[pinId]) pinGroups[pinId] = [];
+    pinGroups[pinId].push(d);
+  });
+
+  // สีของ pin:
+  // - old/new: ใช้สีตาม truck ของโหมดนั้น (oldTruck/newTruck)
+  // - actual: ใช้สีตาม actualTruck
+  // เพื่อให้ pin สอดคล้องกับสิ่งที่กำลัง "แสดงผล"
+  const pinColors = {};
+  Object.keys(pinGroups).sort().forEach((id, i) => pinColors[id] = COLORS[i % COLORS.length]);
+
+  Object.keys(pinGroups).forEach(truckId => {
+    const points = pinGroups[truckId];
+    const color = pinColors[truckId]; // หรือ getTruckColor(truckId)
+
+    points.forEach(p => {
+      L.circleMarker([p.lat, p.lng], {
+        radius: 5, fillColor: color, color: '#fff',
+        weight: 1, opacity: 1, fillOpacity: 0.9
+      })
+      .bindPopup(`
+        <b>${p.name}</b><br>
+        Pin Truck: <b>${truckId}</b><br>
+        Current: ${p.oldTruck}<br>
+        K-Means: ${p.newTruck}<br>
+        Actual: ${isBlankTruck(p.actualTruck) ? '-' : p.actualTruck}<br>
+        Cluster: ${p.clusterLabel ?? '-'}<br>
+        Sale: ${Number(p.sale || 0).toLocaleString('th-TH')} L/wk
+      `)
+      .addTo(layerGroup);
+    });
+  });
+
+  addLegend();
+}
     function renderTable() {
       const tbody = document.getElementById('tableBody');
       tbody.innerHTML = '';
