@@ -444,7 +444,7 @@
           </div>
 
           <div style="color:#9ca3af; margin-top:6px;">
-            Current: zone+pin = current | K-Means: zone+pin = kmeans | Actual: zone = kmeans, pin = actual, highlight = actual
+            Current: zone+pin = current | K-Means: zone+pin = kmeans | Actual: pin+highlight = actual
           </div>
         `;
         return div;
@@ -546,28 +546,30 @@
         zoneGroups[zoneId].push(d);
       });
 
-      Object.keys(zoneGroups).forEach(truckId => {
-        const points = zoneGroups[truckId];
-        const color = getTruckColor(truckId);
+     if (currentViewMode !== 'actual') {
+  Object.keys(zoneGroups).forEach(truckId => {
+    const points = zoneGroups[truckId];
+    const color = getTruckColor(truckId);
 
-        if (points.length >= 3) {
-          const hullPoints = convexHull(points.map(p => ({ lat: p.lat, lng: p.lng })));
-          L.polygon(hullPoints.map(p => [p.lat, p.lng]), {
-            color: color,
-            weight: 2,
-            opacity: 0.45,
-            fillColor: color,
-            fillOpacity: 0.08
-          }).addTo(layerGroup);
-        } else if (points.length === 2) {
-          L.polyline(points.map(p => [p.lat, p.lng]), {
-            color: color,
-            weight: 2,
-            opacity: 0.45,
-            dashArray: '5, 5'
-          }).addTo(layerGroup);
-        }
-      });
+    if (points.length >= 3) {
+      const hullPoints = convexHull(points.map(p => ({ lat: p.lat, lng: p.lng })));
+      L.polygon(hullPoints.map(p => [p.lat, p.lng]), {
+        color: color,
+        weight: 2,
+        opacity: 0.45,
+        fillColor: color,
+        fillOpacity: 0.08
+      }).addTo(layerGroup);
+    } else if (points.length === 2) {
+      L.polyline(points.map(p => [p.lat, p.lng]), {
+        color: color,
+        weight: 2,
+        opacity: 0.45,
+        dashArray: '5, 5'
+      }).addTo(layerGroup);
+    }
+  });
+}
 
       const pinGroups = {};
       globalData.forEach(d => {
